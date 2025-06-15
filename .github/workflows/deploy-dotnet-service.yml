@@ -1,0 +1,85 @@
+name: Deploy a dotnet service to production
+
+on:
+  push:
+    branches: [ main ]  # or use "release" or tag-based if you prefer
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      SERVICE_NAME: pixelstacker.web.net.service
+      DEPLOY_API_TO_REMOTE_DIR: ./services/pixelstacker.web.net-deploy
+      MOVE_DEPLOYED_API_TO_REMOTE_DIR: ./services/pixelstacker.web.net
+      DEPLOY_UI_TO_REMOTE_DIR: ./httpdocs/projects/pixelstacker.web.react-deploy
+      MOVE_DEPLOYED_UI_TO_REMOTE_DIR: ./httpdocs/projects/pixelstacker.web.react
+      SSH_WORKINGDIR_ROOT: /var/www/vhosts/taylorlove.info
+      CHOWN: taylorlove:psacln
+      MAIN_API_ARTIFACT_TO_CHMOD: PixelStacker.Web.Net
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Publish API
+      run: dotnet publish ./PixelStacker.Web.Net/PixelStacker.Web.Net.csproj -c Release -o api_publish
+
+    - name: Build UI (React)
+      run: |
+        cd PixelStacker.Web.Net/PixelStacker.Web.React
+        npm install
+        npm run build
+
+    - name: Zip UI
+      run: zip -r ui.zip ./PixelStacker.Web.Net/PixelStacker.Web.React/dist
+
+    - name: Zip API
+      run: zip -r api.zip ./api_publish
+
+    - name: Upload UI & API to Server
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.FTP_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: 22
+        source: "ui.zip,api.zip"
+        target: "~/deploy"
+
+    - name: Run Remote Deployment
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.FTP_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: 22
+        script: |
+          cd $SSH_WORKINGDIR_ROOT
+          mkdir -p $DEPLOY_API_TO_REMOTE_DIR
+          mkdir -p $DEPLOY_UI_TO_REMOTE_DIR
+
+          unzip -o ~/deploy/ui.zip -d $DEPLOY_UI_TO_REMOTE_DIR
+          unzip -o ~/deploy/api.zip -d $DEPLOY_API_TO_REMOTE_DIR
+
+          mv $MOVE_DEPLOYED_API_TO_REMOTE_DIR $MOVE_DEPLOYED_API_TO_REMOTE_DIR-old || true
+          mv $DEPLOY_API_TO_REMOTE_DIR $MOVE_DEPLOYED_API_TO_REMOTE_DIR
+
+          mv $MOVE_DEPLOYED_UI_TO_REMOTE_DIR $MOVE_DEPLOYED_UI_TO_REMOTE_DIR-old || true
+          mv $DEPLOY_UI_TO_REMOTE_DIR $MOVE_DEPLOYED_UI_TO_REMOTE_DIR
+
+          chmod 754 $MOVE_DEPLOYED_API_TO_REMOTE_DIR/$MAIN_API_ARTIFACT_TO_CHMOD
+
+          chown -R $CHOWN $MOVE_DEPLOYED_API_TO_REMOTE_DIR
+          chown -R $CHOWN $MOVE_DEPLOYED_UI_TO_REMOTE_DIR
+
+          systemctl stop $SERVICE_NAME
+          systemctl start $SERVICE_NAME
+
+          rm -rf $MOVE_DEPLOYED_API_TO_REMOTE_DIR-old
+          rm -rf $MOVE_DEPLOYED_UI_TO_REMOTE_DIR-old
