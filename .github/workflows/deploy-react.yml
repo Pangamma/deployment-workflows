@@ -1,8 +1,8 @@
-name: Deploy a dotnet service to production
+name: Deploy a react app.
 
 on:
   push:
-    branches: [ master ]  # or use "release" or tag-based if you prefer
+    branches: [ master, main ]  # or use "release" or tag-based if you prefer
 
 jobs:
   deploy:
@@ -21,14 +21,6 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-
-    - name: Publish API
-      run: dotnet publish ./PixelStacker.Web.Net/PixelStacker.Web.Net.csproj -c Release -o api_publish
 
     - name: Build UI (React)
       run: |

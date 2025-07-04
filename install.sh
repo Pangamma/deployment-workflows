@@ -1,0 +1,1 @@
+wget https://autoinstall.plesk.com/plesk-installers
